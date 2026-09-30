@@ -1,0 +1,122 @@
+/* Match the host BORD shell. The source of truth for light/dark tokens is
+   /style.css; these rules map the laboratory's older selectors onto them. */
+:root {
+  --ink: var(--text);
+  --paper: var(--bg);
+  --nav: var(--rail-bg);
+  --orange: var(--brand-orange-muted);
+  --teal: var(--brand-orange-muted);
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+html[data-theme="dark"] {
+  --line: #313131;
+  --muted: #9a9a9a;
+  --lab-surface: #1c1c1c;
+  --lab-raised: #222222;
+  --lab-input: #161616;
+  --lab-hover: #292929;
+  --lab-subtle: #b4b4b4;
+  --lab-code: #141414;
+  --lab-highlight: rgba(194,86,47,.16);
+  --lab-warning: #3a2a20;
+  --lab-warning-text: #f2bb91;
+}
+html[data-theme="light"] {
+  --line: #d8dce4;
+  --muted: #8891a0;
+  --lab-surface: #ffffff;
+  --lab-raised: #f7f8fa;
+  --lab-input: #f7f8fa;
+  --lab-hover: #eceef2;
+  --lab-subtle: #5c6470;
+  --lab-code: #24282c;
+  --lab-highlight: #fbeee7;
+  --lab-warning: #fff1e6;
+  --lab-warning-text: #8f3a18;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--sans); }
+button, input, select, textarea { color: var(--text); font-family: var(--sans); }
+button { background: var(--panel); border-color: var(--line); border-radius: var(--radius); }
+button:hover { background: var(--lab-hover); border-color: var(--muted); }
+.sidebar { width: 188px; padding: 0 12px 16px; background: var(--rail-bg); color: var(--rail-text); border-right: 1px solid var(--rail-line); border-radius: 0 16px 16px 0; }
+.brand { display: block; height: 76px; padding: 12px 0 6px; border-bottom: 1px solid var(--rail-line); color: var(--rail-text); letter-spacing: normal; }
+.brand img { display: block; width: 130px; height: 40px; object-fit: contain; object-position: left top; }
+html[data-theme="light"] .brand img { content: url('/assets/bord_logo_rail.png'); }
+html[data-theme="light"] .sidebar,
+html[data-theme="light"] .brand small,
+html[data-theme="light"] .side-intro,
+html[data-theme="light"] .search-label,
+html[data-theme="light"] .nav-group,
+html[data-theme="light"] .side-bottom,
+html[data-theme="light"] .side-bottom button,
+html[data-theme="light"] .nav-item { color: #303a49; }
+html[data-theme="light"] .nav-index { opacity: .8; }
+html[data-theme="light"] #search { color: #1a1d23; }
+html[data-theme="light"] #search::placeholder { color: #465264; }
+.brand small { display: block; color: var(--rail-fg2); font: 600 9px var(--sans); letter-spacing: .7px; }
+.side-intro { color: var(--rail-fg2); margin: 17px 0 16px; font-size: 11px; }
+.search-label, .nav-group { color: var(--rail-muted); }
+#search { background: var(--rail-island); border-color: var(--rail-line2); color: var(--rail-text); }
+#search::placeholder { color: var(--rail-muted); }
+.nav-item { color: var(--rail-fg2); border-radius: var(--radius); font-size: 11px; padding: 9px 6px; }
+.nav-item:hover { background: var(--rail-island); color: var(--rail-text); }
+.nav-item.active { background: var(--rail-island2); color: var(--rail-text); border-left: 2px solid var(--brand-orange-muted); }
+.nav-item.done .nav-index { color: var(--brand-orange-muted); }
+.side-bottom { color: var(--rail-fg2); }
+.side-bottom button { color: var(--rail-text); }
+.progress-track { background: var(--rail-line2); }
+.progress-track i { background: var(--brand-orange-muted); }
+main { margin-left: 188px; }
+.topbar { height: 58px; background: var(--topbar-bg); border-color: var(--line); padding: 0 26px; }
+.crumb { color: var(--muted); }
+.crumb b { color: var(--text); }
+.top-actions button { color: var(--text); }
+.prod-link { color: var(--brand-orange-muted); }
+.pill { background: var(--accent-soft); color: var(--accent-strong); }
+.intro { padding: 28px 26px 22px; }
+.intro p, .purpose, .guide p, .note, .tiny, .small-note { color: var(--muted2); }
+.eyebrow { color: var(--brand-orange-muted); }
+h1 { font-size: 30px; }
+h2 { font-size: 22px; }
+.chain-button, .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.chain-button:hover, .primary:hover { background: var(--primary-light); }
+.chain-button span { color: #dadada; }
+.map-card, .input-card, .result-card, .code-card, dialog { background: var(--panel); border-color: var(--line); border-radius: var(--radius); }
+.map-card { margin: 0 26px 22px; }
+.workbench { padding: 0 26px 30px; }
+.flow-node, .guide, .execution-map, .boundary { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.flow-node.active { background: var(--accent-soft); border-color: var(--brand-orange-muted); box-shadow: inset 0 3px var(--brand-orange-muted); }
+.flow-node b, .lesson-heading code, .control label, .mini-label, .code-card summary { color: var(--muted2); }
+#flow-caption { border-color: var(--line); }
+#flow-caption b, .group-row>b, .tree-key, .tree summary { color: var(--accent-strong); }
+.guide-num { background: var(--accent-soft); color: var(--accent-strong); }
+.input-card select, .input-card textarea, .raw-json { background: var(--lab-input); border-color: var(--line); color: var(--text); }
+.tabs, .result-actions, footer { border-color: var(--line); }
+.tabs button { color: var(--muted2); }
+.tabs button.active { color: var(--accent-strong); box-shadow: inset 0 -2px var(--brand-orange-muted); }
+.stat, .group-box span, .ladder>div { background: var(--lab-raised); border-color: var(--line); }
+.stat strong, .ladder b { color: var(--text); }
+.stat span, .ladder span, .data-table th { color: var(--muted2); }
+.stat.warn { background: var(--lab-warning); }
+.stat.warn strong { color: var(--lab-warning-text); }
+.equation, .source-code { background: var(--lab-code); color: #f1f1f1; }
+.equation small { color: #c7c7c7; }
+.group-box, .trace-row { border-color: var(--line); }
+.data-table th { background: var(--lab-raised); }
+.data-table td { border-color: var(--line); }
+.pill-small { background: var(--accent-soft); color: var(--accent-strong); }
+.tree-leaf, .trace-row span:last-child, #source-meta { color: var(--muted2); }
+.trace-row:hover, #function-list button.active { background: var(--lab-highlight); }
+.trace-row span:first-child, .execution-nodes b { color: var(--accent-strong); }
+.execution-nodes button { background: var(--panel); border-color: var(--line); }
+.execution-nodes span, .execution-nodes small { color: var(--muted2); }
+.gantt-track { background: var(--lab-raised); }
+.gantt-block { background: var(--ent-line); }
+.gantt-block:nth-child(even) { background: var(--brand-orange-muted); }
+.diff { background: var(--lab-highlight); }
+.diff b { color: var(--text); }
+.warning, .error-box, #stale { background: var(--lab-warning); color: var(--lab-warning-text); border-color: var(--brand-orange-muted); }
+dialog { color: var(--text); }
+#help-content { color: var(--muted2); }
+@media (max-width: 1000px) { .sidebar { width: 185px; } main { margin-left: 185px; } }
+@media (max-width: 620px) { .sidebar { width: 100%; border-radius: 0; } main { margin-left: 0; } .brand { height: 60px; } }
