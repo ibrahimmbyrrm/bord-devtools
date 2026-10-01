@@ -31,6 +31,26 @@ LINE_BENCHMARK={'station_count':2,'operator_count':3,
         {'number':4,'name':'Contayı tak','seconds':5,'predecessors':[2,3]},
         {'number':5,'name':'Vidaları sık','seconds':7,'predecessors':[4]},
         {'number':6,'name':'Kontrol et','seconds':4,'predecessors':[5]}]}
+FLOW_CANVAS={
+    'takt': {'taktMode':'manual','manualTakt':12},
+    'stations': [
+        {'id':'S1','name':'Hazırlık','operators':[{'id':'O1','tasks':['1']}]},
+        {'id':'S2A','name':'Paralel montaj A','operators':[{'id':'O2','tasks':['2']}]},
+        {'id':'S2B','name':'Paralel montaj B','operators':[{'id':'O3','tasks':['3']}]},
+        {'id':'S3','name':'Birleştirme ve kontrol','operators':[{'id':'O4','tasks':['4']}]},
+    ],
+    'parallel_groups': [{'id':'PG1','name':'Paralel montaj','station_ids':['S2A','S2B']}],
+    'connections': [
+        {'from':'S1','to':'S2A'}, {'from':'S1','to':'S2B'},
+        {'from':'S2A','to':'S3'}, {'from':'S2B','to':'S3'},
+    ],
+    'tasks': [
+        {'id':'1','number':1,'name':'Gövdeyi hazırla','seconds':4,'predecessors':[]},
+        {'id':'2','number':2,'name':'Sol modülü monte et','seconds':5,'predecessors':['1']},
+        {'id':'3','number':3,'name':'Sağ modülü monte et','seconds':4,'predecessors':['1']},
+        {'id':'4','number':4,'name':'Birleştir ve kontrol et','seconds':6,'predecessors':['2','3']},
+    ],
+}
 LESSONS=[]
 
 def add(id,group,title,fn,purpose,input,observe,try_it,run,functions,*,variants=None,controls=None,warning='',next=None):
@@ -186,6 +206,13 @@ add('line-benchmark','Plan → hat','Hat dengeleme benchmarkı','balance_line �
     variants=[v('Sıkı takt',dict(LINE_BENCHMARK,takt=dict(LINE_BENCHMARK['takt'],manualTakt=9))),
               v('Talebe göre takt',dict(LINE_BENCHMARK,takt=dict(LINE_BENCHMARK['takt'],taktMode='auto')))],
     warning='Girilen iş süreleri benchmark girdisidir; PMTS hesabı veya saha ölçümü olarak doğrulanmaz.',next='schedule')
+add('flow-canvas','Plan → hat','Flow Canvas: paralel hat örneği','flow_canvas → balance_line → balance',
+    'İstasyonları düğüm olarak kur, görevleri operatörlere yerleştir, akışı iki kola ayır ve tekrar birleştir. Bu ilk örnek görsel yerleşimi üretim dengeleme sözleşmesine çevirerek aynı dengeleme motoruyla simüle eder.',
+    FLOW_CANVAS,
+    'S1’den S2A/S2B’ye ayrılan akışı, iki paralel istasyonun S3’te birleşmesini ve her görevin öncül oklarını gör. Kartlarda gerçek başlangıç/bitiş ve takt sonucu görünür.',
+    'JSON içindeki `connections` alanında bir kolu silip tekrar çalıştır. Sonra S2B görevini S2A’ya taşıyarak operatör ve takt etkisini karşılaştır.',
+    r.flow_canvas,[r.flow_canvas,r.method_balance.balance_line,r.method_balance.line_inputs,r.balance],
+    warning='Bu ilk canvas deneyi kaydetme/drag-drop içermez; görsel akışı ve dengeleme sözleşmesini doğrular. Üretim hattı ve veritabanı değişmez.',next='schedule')
 add('schedule','Plan → hat','Yerleşimin gerçek çevrimi','annotate_line_schedule',
     'Mevcut operatör sırası sabitlenerek takvim yeniden hesaplanır. Ekranda max(operatör yükleri) almak, operatörler arasındaki bağımlı beklemeyi gizleyebilir.',
     {'line':{'id':'fixed','stations':[{'id':'s1','operators':[{'id':'o1','tasks':[{'id':'a','canonical_total_sec':6,'predecessorTaskIds':[]}]},{'id':'o2','tasks':[{'id':'b','canonical_total_sec':4,'predecessorTaskIds':['a']}]}]}]}},

@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0,str(Path(__file__).parent))
 from bord_devtools import runtime as r
-from bord_devtools.lessons import LESSONS, OPS, ZERO, LINE_BENCHMARK
+from bord_devtools.lessons import LESSONS, OPS, ZERO, LINE_BENCHMARK, FLOW_CANVAS
 from bord_devtools.server import Handler, HTTPServer
 from bord_devtools.asgi import app as dev_app
 from fastapi.testclient import TestClient
@@ -145,6 +145,21 @@ def test_line_benchmark_respects_robot_start_and_finish_operator_phases():
     data['jobs'][0]['human_seconds']=3
     with pytest.raises(ValueError,match='sum must equal human_seconds'):
         r.line_benchmark(data)
+
+
+def test_flow_canvas_simulates_split_parallel_and_joined_stations():
+    result = r.flow_canvas(deepcopy(FLOW_CANVAS))
+    assert result['feasible']
+    assert result['station_times'] == {'S1': 4.0, 'S2A': 5.0, 'S2B': 4.0, 'S3': 6.0}
+    assert result['flow']['parallel_groups'] == [{'id':'PG1','name':'Paralel montaj','station_ids':['S2A','S2B']}]
+    assert {tuple(edge.values()) for edge in result['flow']['connections']} == {
+        ('S1','S2A'), ('S1','S2B'), ('S2A','S3'), ('S2B','S3')}
+    assert [(a['task_id'], a['start_sec'], a['finish_sec']) for a in result['assignments']] == [
+        ('1',0,4.0),('2',0,5.0),('3',0,4.0),('4',0,6.0)]
+    broken = deepcopy(FLOW_CANVAS)
+    broken['connections'].pop()
+    with pytest.raises(ValueError, match='istasyon bağlantıları eksik'):
+        r.flow_canvas(broken)
 
 
 def test_regressions_and_limits_are_visible():

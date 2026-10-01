@@ -225,6 +225,134 @@ def line_benchmark(data):
     return result
 
 
+def flow_canvas(data):
+    """Validate a visual line topology, then simulate its fixed placement.
+
+    The diagram is a presentation of the same line contract consumed by
+    ``method_balance``. Station positions and parallel groups are metadata;
+    task precedence, operator assignment and takt remain production inputs.
+    """
+    stations = data.get('stations')
+    tasks = data.get('tasks')
+    connections = data.get('connections', [])
+    groups = data.get('parallel_groups', [])
+    if not isinstance(stations, list) or not stations:
+        raise ValueError('En az bir istasyon gerekli')
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError('En az bir iş gerekli')
+    station_ids = [s.get('id') for s in stations]
+    if any(not isinstance(x, str) or not x for x in station_ids) or len(set(station_ids)) != len(station_ids):
+        raise ValueError('İstasyon kimlikleri benzersiz ve boş olmayan metin olmalı')
+    task_by_id = {str(t.get('id')): t for t in tasks}
+    if len(task_by_id) != len(tasks) or any(k in ('None', '') for k in task_by_id):
+        raise ValueError('İş kimlikleri benzersiz olmalı')
+    station_by_id = {s['id']: s for s in stations}
+    placed = set()
+    line_stations = []
+    for station in stations:
+        operators = station.get('operators') or []
+        if not operators:
+            raise ValueError(f"{station['id']}: en az bir operatör gerekli")
+        line_operators = []
+        for operator in operators:
+            operator_id = operator.get('id')
+            task_ids = operator.get('tasks') or []
+            if not isinstance(operator_id, str) or not operator_id:
+                raise ValueError(f"{station['id']}: operatör kimliği gerekli")
+            line_tasks = []
+            for task_id in task_ids:
+                key = str(task_id)
+                if key not in task_by_id:
+                    raise ValueError(f'{key}: görev tanımı bulunamadı')
+                if key in placed:
+                    raise ValueError(f'{key}: birden fazla operatöre atanmış')
+                source = task_by_id[key]
+                seconds = source.get('seconds')
+                predecessors = source.get('predecessors', [])
+                if not isinstance(predecessors, list):
+                    raise ValueError(f'{key}: predecessors liste olmalı')
+                line_tasks.append(dict(
+                    id=key, name=str(source.get('name') or f'İş {key}'),
+                    canonical_total_sec=seconds,
+                    canonical_human_sec=source.get('human_seconds', seconds),
+                    canonical_machine_sec=source.get('machine_seconds', 0),
+                    predecessorTaskIds=[str(p) for p in predecessors],
+                    station_locked=True,
+                ))
+                placed.add(key)
+            line_operators.append(dict(id=operator_id, tasks=line_tasks))
+        line_stations.append(dict(id=station['id'], operators=line_operators))
+    if placed != set(task_by_id):
+        missing = sorted(set(task_by_id) - placed)
+        raise ValueError('Atanmamış işler: ' + ', '.join(missing))
+    for key, task in task_by_id.items():
+        predecessors = {str(p) for p in task.get('predecessors', [])}
+        unknown = predecessors - task_by_id.keys()
+        if unknown:
+            raise ValueError(f'{key}: bilinmeyen öncüller {", ".join(sorted(unknown))}')
+    if not isinstance(connections, list):
+        raise ValueError('connections liste olmalı')
+    task_station = {str(task_id): station['id']
+                    for station in stations
+                    for operator in station.get('operators') or []
+                    for task_id in operator.get('tasks') or []}
+    valid_connections = []
+    for edge in connections:
+        if not isinstance(edge, dict) or edge.get('from') not in station_by_id or edge.get('to') not in station_by_id:
+            raise ValueError('İstasyon bağlantıları bilinen from/to kimliklerini kullanmalı')
+        valid_connections.append({'from': edge['from'], 'to': edge['to']})
+    required_connections = {
+        (task_station[str(pred)], task_station[key])
+        for key, task in task_by_id.items()
+        for pred in task.get('predecessors', [])
+        if task_station[str(pred)] != task_station[key]
+    }
+    provided_connections = {(edge['from'], edge['to']) for edge in valid_connections}
+    missing_connections = required_connections - provided_connections
+    if missing_connections:
+        missing = ', '.join(f'{source}→{target}' for source, target in sorted(missing_connections))
+        raise ValueError(f'Görev öncüllerini taşıyan istasyon bağlantıları eksik: {missing}')
+    group_ids = set()
+    parallel_groups = []
+    for group in groups:
+        gid = group.get('id')
+        members = group.get('station_ids') or []
+        if not isinstance(gid, str) or not gid or gid in group_ids or len(members) < 2:
+            raise ValueError('Paralel grup kimliği benzersiz olmalı ve en az iki istasyon içermeli')
+        if any(member not in station_by_id for member in members):
+            raise ValueError(f'{gid}: paralel grup bilinmeyen istasyon içeriyor')
+        group_ids.add(gid)
+        parallel_groups.append(dict(id=gid, name=group.get('name') or gid, station_ids=list(members)))
+    settings = deepcopy(data.get('takt') or {})
+    line = dict(id='flow-canvas-line', stations=line_stations)
+    result = method_balance.balance_line(line, settings)
+    task_edges = []
+    for task in tasks:
+        task_edges.extend({'from': str(pred), 'to': str(task['id']), 'kind': 'precedence'}
+                          for pred in task.get('predecessors', []))
+    index = {station['id']: i for i, station in enumerate(stations)}
+    layout = data.get('layout') or {}
+    diagram_stations = []
+    for station in stations:
+        pos = layout.get(station['id'], {})
+        diagram_stations.append(dict(
+            id=station['id'], name=station.get('name') or station['id'],
+            x=pos.get('x', 40 + index[station['id']] * 300),
+            y=pos.get('y', 80), width=240, height=80 + 28 * sum(len(o['tasks']) for o in station['operators']),
+            parallel_group=next((g['id'] for g in parallel_groups if station['id'] in g['station_ids']), None),
+            operators=station['operators']))
+    diagram = dict(stations=diagram_stations, connections=valid_connections,
+                   parallel_groups=parallel_groups, task_edges=task_edges,
+                   width=max((s['x'] + s['width'] for s in diagram_stations), default=640) + 40,
+                   height=max((s['y'] + s['height'] for s in diagram_stations), default=300) + 40)
+    result['flow'] = diagram
+    result['simulation'] = result.copy()
+    result['simulation'].pop('simulation', None)
+    result['flow_input'] = dict(stations=stations, tasks=tasks, connections=valid_connections,
+                                parallel_groups=parallel_groups, takt=settings)
+    return result
+
+
 def pipeline(data):
     """One actual fixture through the real functions; retain every boundary output."""
     doc = open_document(FIXTURE)

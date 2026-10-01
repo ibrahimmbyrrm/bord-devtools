@@ -5,7 +5,7 @@ const lessons=M.lessons, sources={...M.sources}, states={}, visited=new Set();
 let current=null, activeTab='visual', selectedSource=null, busy=false, requestSerial=0;
 const groups=[...new Set(lessons.map(l=>l.group))];
 const isLive=LAB.mode==='live';
-const flow=[['document','CAD','Dosya'],['assembly','TREE','Örnek ağacı'],['bom','BOM','Parça listesi'],['sequence','BOP','İş sırası'],['flatten','FLAT','Operasyonlar'],['operation','PMTS','Hareket / süre'],['plan','PLAN','Grup toplamı'],['canonical','ROOT','Kök iş'],['line-benchmark','LINE','Hat benchmarkı']];
+const flow=[['document','CAD','Dosya'],['assembly','TREE','Örnek ağacı'],['bom','BOM','Parça listesi'],['sequence','BOP','İş sırası'],['flatten','FLAT','Operasyonlar'],['operation','PMTS','Hareket / süre'],['plan','PLAN','Grup toplamı'],['canonical','ROOT','Kök iş'],['line-benchmark','LINE','Hat benchmarkı'],['flow-canvas','FLOW','Flow Canvas']];
 function state(){return states[current.id]||(states[current.id]={text:pretty(current.input),variant:0,result:null,baseline:null,dirty:false});}
 function raw(x){return `<pre class="raw-json">${esc(pretty(x))}</pre>`;}
 function number(x){return typeof x==='number'?new Intl.NumberFormat('tr-TR',{maximumFractionDigits:6}).format(x):esc(x??'—');}
@@ -151,12 +151,26 @@ function balanceVisual(o){
  if(o.reasons?.length)html+=`<div class="warning">${o.reasons.map(esc).join('<br>')}</div>`;
  return html;
 }
+function flowVisual(o){
+ const d=o.flow||{}, stations=d.stations||[], byId=new Map(stations.map(s=>[s.id,s])), tasks=new Map((d.task_edges||[]).map(e=>[e.to,e]));
+ const assignments=new Map((o.assignments||[]).map(a=>[String(a.task_id),a]));
+ const groups=(d.parallel_groups||[]).map(g=>{const members=g.station_ids.map(id=>byId.get(id)).filter(Boolean);if(!members.length)return '';const left=Math.min(...members.map(s=>s.x))-14,top=Math.min(...members.map(s=>s.y))-38,right=Math.max(...members.map(s=>s.x+s.width))+14,bottom=Math.max(...members.map(s=>s.y+s.height))+14;return `<rect class="flow-group-box" x="${left}" y="${top}" width="${right-left}" height="${bottom-top}" rx="12"/><text class="flow-group-label" x="${left+10}" y="${top+18}">${esc(g.name||g.id)} · paralel</text>`;}).join('');
+ const edges=(d.connections||[]).map(edge=>{const from=byId.get(edge.from),to=byId.get(edge.to);if(!from||!to)return '';const x1=from.x+from.width,y1=from.y+from.height/2,x2=to.x,y2=to.y+to.height/2,mid=(x1+x2)/2;return `<path class="flow-edge" d="M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" marker-end="url(#flow-arrow)"/><text class="flow-edge-label" x="${mid-14}" y="${(y1+y2)/2-5}">akış</text>`;}).join('');
+ const nodes=stations.map(station=>{let row=station.y+58;const taskRows=station.operators.flatMap(op=>op.tasks.map(task=>{const a=assignments.get(String(task.id))||{},h=task.name||task.id;const line=`#${task.id} ${h}`;const out=`${number(a.start_sec??0)}–${number(a.finish_sec??task.canonical_total_sec??0)} s`;const item=`<rect class="flow-task-card" x="${station.x+10}" y="${row}" width="${station.width-20}" height="22" rx="4"/><text class="flow-task-id" x="${station.x+17}" y="${row+15}">${esc(line.length>29?line.slice(0,28)+'…':line)}</text><text class="flow-task-time" x="${station.x+station.width-17}" y="${row+15}" text-anchor="end">${esc(out)}</text>`;row+=28;return item;}));return `<g class="flow-station"><rect x="${station.x}" y="${station.y}" width="${station.width}" height="${station.height}" rx="9"/><text class="flow-station-title" x="${station.x+12}" y="${station.y+23}">${esc(station.name)}</text><text class="flow-station-meta" x="${station.x+12}" y="${station.y+40}">${esc(station.id)} · ${station.operators.length} operatör</text>${taskRows.join('')}</g>`;}).join('');
+ let html=`<div class="stats">${stat('Hat çevrimi',o.bottleneck_sec,'s',!o.feasible)}${stat('Takt',o.takt_sec,'s')}${stat('İstasyon',stations.length)}${stat('Paralel grup',(d.parallel_groups||[]).length)}</div>`;
+ html+=`<span class="pill-small ${o.feasible?'':'red'}">${o.feasible?'Canvas yerleşimi takta uygun':o.feasibility_status==='proven_infeasible'?'Canvas yerleşimi modelde imkânsız':'Uygun çözüm bulunamadı; imkânsızlık kanıtlanmadı'}</span><p class="note">Kartlar sabit istasyon yerleşimini, oklar kullanıcı tarafından kurulan akışı, kesikli çerçeve paralel grubu gösterir. İçerideki zamanlar gerçek dengeleme çıktısından gelir.</p>`;
+ html+=`<div class="flow-canvas-wrap"><svg class="flow-canvas" viewBox="0 0 ${d.width||900} ${d.height||360}" role="img" aria-label="Paralel istasyonlu BORD hat akışı"><defs><marker id="flow-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>${groups}${edges}${nodes}</svg></div>`;
+ html+=`<div class="mini-label">Atamalar ve öncüller</div>${table((o.assignments||[]).map(a=>{const task=(o.flow_input?.tasks||[]).find(t=>String(t.id)===String(a.task_id))||{};return {...a,name:task.name,predecessors:task.predecessors||[]};}),[['İş no',r=>'#'+r.task_id],['İş','name'],['Öncül',r=>r.predecessors.length?r.predecessors.map(x=>'#'+x).join(', '):'—'],['İstasyon','station_id'],['Başlangıç s',r=>number(r.start_sec)],['Bitiş s',r=>number(r.finish_sec)]])}`;
+ if(o.reasons?.length)html+=`<div class="warning">${o.reasons.map(esc).join('<br>')}</div>`;
+ return html;
+}
 function visual(result){
  const o=result.output;
  if(result.error)return `<div class="error-box"><strong>${esc(result.error.type)}</strong>${esc(result.error.message)}<p>${current.id==='bug-cycle'?'Bu hazır vaka, açık öncelik döngüsünü yeniden üretir. Çağrı izi ve kaynak kodundan son fonksiyonu incele.':'Bu girdi fonksiyon tarafından tamamlanamadı. Çağrı izini açarak sınırı incele; üstteki deney açıklaması varsayılan örnek içindir.'}</p></div>`;
  if(o?.operations&&'coverage_percent'in o)return resultPlan(o,result.input);
  if(o?.elements&&'standard_time_sec'in o)return resultOperation(o);
  if(o?.benchmark_input)return lineBenchmarkVisual(o);
+ if(o?.flow)return flowVisual(o);
  if(o?.assignments)return balanceVisual(o);
  if(o?.scene && o?.analysis)return geometryVisual(o);
  if(o?.assembly&&o?.priced){
