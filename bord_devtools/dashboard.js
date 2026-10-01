@@ -5,7 +5,7 @@ const lessons=M.lessons, sources={...M.sources}, states={}, visited=new Set();
 let current=null, activeTab='visual', selectedSource=null, busy=false, requestSerial=0;
 const groups=[...new Set(lessons.map(l=>l.group))];
 const isLive=LAB.mode==='live';
-const flow=[['document','CAD','Dosya'],['assembly','TREE','Örnek ağacı'],['bom','BOM','Parça listesi'],['sequence','BOP','İş sırası'],['flatten','FLAT','Operasyonlar'],['operation','PMTS','Hareket / süre'],['plan','PLAN','Grup toplamı'],['canonical','ROOT','Kök iş'],['balance','LINE','Hat çizelgesi']];
+const flow=[['document','CAD','Dosya'],['assembly','TREE','Örnek ağacı'],['bom','BOM','Parça listesi'],['sequence','BOP','İş sırası'],['flatten','FLAT','Operasyonlar'],['operation','PMTS','Hareket / süre'],['plan','PLAN','Grup toplamı'],['canonical','ROOT','Kök iş'],['line-benchmark','LINE','Hat benchmarkı']];
 function state(){return states[current.id]||(states[current.id]={text:pretty(current.input),variant:0,result:null,baseline:null,dirty:false});}
 function raw(x){return `<pre class="raw-json">${esc(pretty(x))}</pre>`;}
 function number(x){return typeof x==='number'?new Intl.NumberFormat('tr-TR',{maximumFractionDigits:6}).format(x):esc(x??'—');}
@@ -24,7 +24,7 @@ function renderNav(){
  $('progress').style.width=`${visited.size/lessons.length*100}%`;
 }
 function renderFlow(){
- const mapped={mesh:'assembly',geometry:'assembly',feasibility:'sequence',system:'operation','resource-gap':'balance',mates:'assembly',enrich:'bom',standard:'bom',subassembly:'sequence',classify:'operation',context:'operation',expand:'operation',hands:'operation',allowance:'operation',overlap:'operation',allocation:'operation',rowcycle:'canonical',robot:'operation',line:'balance',takt:'balance',schedule:'balance',benchmark:'plan'};
+const mapped={mesh:'assembly',geometry:'assembly',feasibility:'sequence',system:'operation','resource-gap':'line-benchmark',balance:'line-benchmark',mates:'assembly',enrich:'bom',standard:'bom',subassembly:'sequence',classify:'operation',context:'operation',expand:'operation',hands:'operation',allowance:'operation',overlap:'operation',allocation:'operation',rowcycle:'canonical',robot:'operation',line:'line-benchmark',takt:'line-benchmark',schedule:'line-benchmark',benchmark:'plan'};
  const id=mapped[current.id]||current.id;
  $('flow').innerHTML=flow.map(([k,short,title],i)=>`${i?'<span class="flow-arrow" aria-hidden="true">→</span>':''}<button class="flow-node ${id===k?'active':''}" data-lesson="${k}"><b>${short}</b>${title}</button>`).join('');
  $('flow-caption').innerHTML='<b>İki farklı soru:</b> calculate_plan “bu iş ne kadar sürer?” · balance “bu işler hangi kaynakta, ne zaman yapılabilir?”';
@@ -34,6 +34,22 @@ function getPath(obj,path){return path.reduce((a,k)=>a?.[k],obj);}
 function renderControls(){
  let data;try{data=JSON.parse($('input').value);}catch{data={};}
  $('controls').innerHTML=current.controls.map((c,i)=>{const value=getPath(data,c.path)??c.min;return `<div class="control"><label for="control-${i}">${esc(c.label)}</label><output id="control-out-${i}">${esc(value)} ${esc(c.unit)}</output><input id="control-${i}" data-control="${i}" type="range" min="${c.min}" max="${c.max}" step="${c.step}" value="${esc(value)}" ${isLive?'':'disabled'}></div>`;}).join('');
+}
+function renderBenchmarkEditor(){
+ const panel=$('benchmark-editor'), enabled=current.id==='line-benchmark';panel.hidden=!enabled;
+ if(!enabled)return;
+ const openJobs=[...panel.querySelectorAll('.benchmark-job-extra')].map((node,index)=>node.open?index:-1).filter(index=>index>=0);
+ let data;try{data=JSON.parse($('input').value);}catch{panel.innerHTML='<p class="warning">JSON biçimi hatalı. Gelişmiş girdiyi düzeltip tekrar dene.</p>';return;}
+ const takt=data.takt||{}, jobs=Array.isArray(data.jobs)?data.jobs:[];
+ const field=(label,key,value,min=1,step=1)=>`<label>${esc(label)}<input type="number" min="${min}" step="${step}" data-benchmark-field="${key}" value="${esc(value)}" ${isLive?'':'disabled'}></label>`;
+ const textField=(label,key,value,placeholder='')=>`<label>${esc(label)}<input type="text" data-benchmark-field="${key}" value="${esc(value??'')}" placeholder="${esc(placeholder)}" ${isLive?'':'disabled'}></label>`;
+ const jobText=(i,label,key,value,placeholder='')=>`<label>${esc(label)}<input type="text" data-job-index="${i}" data-job-field="${key}" value="${esc(value??'')}" placeholder="${esc(placeholder)}" ${isLive?'':'disabled'}></label>`;
+ panel.innerHTML=`<div class="benchmark-form"><h3>Hat kaynakları</h3><div class="benchmark-fields">${field('İstasyon sayısı','station_count',data.station_count)}${field('Toplam operatör','operator_count',data.operator_count)}${textField('İstasyon başına operatör (isteğe bağlı)','station_operator_counts',(data.station_operator_counts||[]).join(', '),'2, 1, 1')}</div><p class="small-note">Boşsa operatörler eşit dağıtılır. Doluysa sayı adedi istasyon sayısına, toplamı operatör sayısına eşit olmalı.</p><h3>Takt hesabı</h3><div class="benchmark-fields"><label>Hesap yöntemi<select data-benchmark-field="takt.taktMode" ${isLive?'':'disabled'}><option value="manual" ${takt.taktMode==='manual'?'selected':''}>Elle takt</option><option value="auto" ${takt.taktMode==='auto'?'selected':''}>Talep / net vardiya</option></select></label>${field('Elle takt · saniye','takt.manualTakt',takt.manualTakt,0.01,0.1)}${field('Vardiya · dakika','takt.shiftMinutes',takt.shiftMinutes,1,1)}${field('Planlı mola · dakika','takt.plannedBreakMinutes',takt.plannedBreakMinutes,0,1)}${field('Vardiya talebi · adet','takt.demandUnits',takt.demandUnits,1,1)}</div><p class="small-note">${takt.taktMode==='auto'?'Aktif: (vardiya − mola) × 60 / talep.':'Aktif: elle girilen takt; diğer parametreler saklanır.'}</p><div class="benchmark-jobs-head"><h3>İşler ve öncüller</h3><button type="button" data-benchmark-action="add" ${isLive?'':'disabled'}>+ İş ekle</button></div><p class="small-note">Öncülleri iş numarasıyla yaz. Kaynak / kilit bölümünde robot, insan katılımı ve sabit yerleşim denenebilir.</p><div class="benchmark-jobs">${jobs.map((job,i)=>`<div class="benchmark-job"><div class="benchmark-job-main"><label>İş no<input type="number" min="1" step="1" data-job-index="${i}" data-job-field="number" value="${esc(job.number)}" ${isLive?'':'disabled'}></label>${jobText(i,'İş adı','name',job.name)}<label>Süre · s<input type="number" min="0.01" step="0.1" data-job-index="${i}" data-job-field="seconds" value="${esc(job.seconds)}" ${isLive?'':'disabled'}></label>${jobText(i,'Öncül iş no','predecessors',(job.predecessors||[]).join(', '),'1, 2')}<button type="button" aria-label="${esc(job.number)} numaralı işi sil" data-benchmark-action="remove" data-job-index="${i}" ${isLive?'':'disabled'}>×</button></div><details class="benchmark-job-extra"><summary>Kaynak / kilit</summary><div class="benchmark-fields"><label>İş türü<select data-job-index="${i}" data-job-field="work_type" ${isLive?'':'disabled'}>${['manual','robot','machine'].map(type=>`<option value="${type}" ${(job.work_type||'manual')===type?'selected':''}>${type}</option>`).join('')}</select></label><label>İnsan meşguliyeti · s<input type="number" min="0" step="0.1" data-job-index="${i}" data-job-field="human_seconds" value="${esc(job.human_seconds??((job.work_type||'manual')==='manual'?job.seconds:0))}" ${isLive?'':'disabled'}></label>${jobText(i,'Operatör aralıkları · s','operator_phases',(job.operator_phases||[]).map(([a,b])=>`${a}-${b}`).join(', '),'0-1, 9-10')}${jobText(i,'Başlangıç istasyonu','station_id',job.station_id,'S1')}${jobText(i,'Başlangıç operatörü','operator_id',job.operator_id,'O1')}${jobText(i,'Makine kimliği','machine_resource_id',job.machine_resource_id,'Robot-A')}${jobText(i,'Ek ortak kaynaklar','resources',(job.resources||[]).join(', '),'Fikstür-A, Kamera-1')}<label class="benchmark-check"><input type="checkbox" data-job-index="${i}" data-job-field="station_locked" ${job.station_locked?'checked':''} ${isLive?'':'disabled'}> İstasyonu kilitle</label></div></details></div>`).join('')}</div></div>`;
+ openJobs.forEach(index=>{const node=panel.querySelectorAll('.benchmark-job-extra')[index];if(node)node.open=true;});
+}
+function updateBenchmark(mutator,rerender=false){
+ try{const data=JSON.parse($('input').value);mutator(data);$('input').value=pretty(data);markDirty();if(rerender)renderBenchmarkEditor();}
+ catch(e){setStatus('Benchmark girdisi değiştirilemedi: '+e.message,true);}
 }
 function setStatus(text,error=false){$('status').textContent=text;$('status').classList.toggle('error-text',error);}
 function select(id,scroll=false){
@@ -52,7 +68,7 @@ function select(id,scroll=false){
  $('prev').disabled=lessons.indexOf(current)===0;
  $('run').textContent=isLive?'▶ Çalıştır ve izle':'▶ Kayıtlı örneği göster';$('run').disabled=busy;
  $('input').setAttribute('aria-label',current.title+' deney girdisi JSON');
- setStatus(s.result?'Önceki deney sonucu korunuyor.':'');renderControls();renderNav();renderFlow();renderFunctions();renderSource();renderResult();
+ $('json-details').open=current.id!=='line-benchmark';setStatus(s.result?'Önceki deney sonucu korunuyor.':'');renderControls();renderBenchmarkEditor();renderNav();renderFlow();renderFunctions();renderSource();renderResult();
  if(scroll)$('lesson-title').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function markDirty(){const s=state();s.text=$('input').value;s.dirty=!!s.result;$('stale').hidden=!s.dirty;$('pin').disabled=s.dirty||!s.result;$('transfer').disabled=s.dirty;setStatus('Girdi değişti; çalıştırarak sonucu yenile.');}
@@ -102,9 +118,34 @@ function gantt(o){
  const max=Math.max(...assignments.map(a=>a.finish_sec),o.takt_sec||0,1), lanes=[...new Set(assignments.map(a=>a.station_id+' / '+a.operator_id))];
  return `<div class="mini-label">Operatör takvimi · saniye</div>${lanes.map(lane=>`<div class="gantt-row"><span>${esc(lane)}</span><div class="gantt-track">${assignments.filter(a=>a.station_id+' / '+a.operator_id===lane).map(a=>`<div class="gantt-block" style="left:${a.start_sec/max*100}%;width:${(a.finish_sec-a.start_sec)/max*100}%" title="${esc(a.task_id)}: ${a.start_sec}–${a.finish_sec} s">${esc(a.task_id)} · ${number(a.finish_sec-a.start_sec)} s</div>`).join('')}</div></div>`).join('')}<div class="gantt-axis"><span>0</span><span>${number(max/2)}</span><span>${number(max)} s</span></div>`;
 }
+function lineBenchmarkVisual(o){
+ const line=o.benchmark_input.line, stations=line.stations, tasks=new Map(stations.flatMap(s=>s.operators.flatMap(op=>op.tasks.map(t=>[t.id,t]))));
+ const assignments=o.assignments||[], max=Math.max(o.bottleneck_sec||0,o.takt_sec||0,1)*1.08;
+ const emptyStations=stations.filter(s=>!assignments.some(a=>a.station_id===s.id)).map(s=>s.id);
+ const taktPosition=Math.min(100,(o.takt_sec||0)/max*100);
+ const heads=stations.map(s=>`<div class="line-chart-station-head" style="flex:${s.operators.length}"><b>${esc(s.id)}</b><small>${number(o.station_times?.[s.id]??0)} s çevrim · ${s.operators.length} operatör</small></div>`).join('');
+ const groups=stations.map(s=>`<div class="line-chart-station" style="flex:${s.operators.length}">${s.operators.map(op=>{
+  const occupied=[], placed=assignments.filter(a=>a.operator_id===op.id).sort((a,b)=>a.start_sec-b.start_sec||a.finish_sec-b.finish_sec).map(a=>{
+   let track=occupied.findIndex(end=>end<=a.start_sec+1e-9);if(track<0){track=occupied.length;occupied.push(a.finish_sec);}else occupied[track]=a.finish_sec;
+   return {a,track};
+  });
+  const count=Math.max(1,occupied.length);
+  return `<div class="line-chart-operator">${placed.map(({a,track})=>{const task=tasks.get(a.task_id)||{}, dur=a.finish_sec-a.start_sec;return `<div class="line-chart-task" style="bottom:${a.start_sec/max*100}%;height:${dur/max*100}%;left:${5+track*90/count}%;width:${Math.max(1,90/count-2)}%" title="İş ${esc(a.task_id)} · ${esc(task.name||'')} · ${number(a.start_sec)}–${number(a.finish_sec)} s · insan ${number(task.canonical_human_sec??dur)} s · öncül: ${esc((task.predecessorTaskIds||[]).join(', ')||'yok')}" aria-label="İş ${esc(a.task_id)}, ${esc(task.name||'')}, ${number(a.start_sec)} ile ${number(a.finish_sec)} saniye"><b>#${esc(a.task_id)}</b><span>${esc(task.name||'')}</span><small>${number(dur)} s${task.canonical_machine_sec>0?' · makine':''}</small></div>`;}).join('')}</div>`;
+ }).join('')}</div>`).join('');
+ const foot=stations.map(s=>`<div class="line-chart-station-foot" style="flex:${s.operators.length}">${s.operators.map(op=>`<span>${esc(op.id)}</span>`).join('')}</div>`).join('');
+ let html=`<div class="stats">${stat('Hat çevrimi',o.bottleneck_sec,'s',!o.feasible)}${stat('Takt hedefi',o.takt_sec,'s')}${stat('İnsan doluluğu',Math.round(o.efficiency_percent*10)/10,'%',!o.feasible)}${stat('Basit alt sınır',Math.round(o.simple_lower_bound_sec*100)/100,'s')}</div>`;
+ html+=`<span class="pill-small ${o.feasible?'':'red'}">${o.feasible?'Takt hedefi karşılandı':o.feasibility_status==='proven_infeasible'?'Modelde hedef imkânsız':'Hedefe uygun çözüm bulunamadı · imkânsızlık kanıtlanmadı'}</span><p class="note">${stations.length-emptyStations.length}/${stations.length} istasyon kullanıldı. Algoritma: ${esc(o.algorithm)} · fizibilite durumu: ${esc(o.feasibility_status||'bilinmiyor')} · kesin arama: ${number(o.feasibility_search_nodes||0)}/${number(o.feasibility_search_limits?.nodes||0)} düğüm. Alt sınır max(en uzun iş, toplam iş / operatör sayısı); kaynak ve öncelik kısıtlarını içermez.</p>`;
+ html+=`<div class="mini-label">Hat grafiği · işler gerçek başlangıç/bitiş zamanında · saniye</div><div class="line-chart"><div class="line-chart-head">${heads}</div><div class="line-chart-plot"><div class="line-chart-groups">${groups}</div><div class="line-chart-takt" style="bottom:${taktPosition}%"><span>Takt ${number(o.takt_sec)} s</span></div></div><div class="line-chart-foot">${foot}</div></div>`;
+ html+=`<div class="mini-label">İstasyon yükleri</div>${table(stations.map(s=>({id:s.id,operators:s.operators.length,cycle:o.station_times?.[s.id]??0,spare:(o.takt_sec??0)-(o.station_times?.[s.id]??0)})),[['İstasyon','id'],['Operatör','operators'],['Çevrim s',r=>number(r.cycle)],['Takta kalan s',r=>number(r.spare)]])}`;
+ html+=`<div class="mini-label">Atamalar ve öncelikler</div>${table(assignments.map(a=>({...a,name:tasks.get(a.task_id)?.name,predecessors:tasks.get(a.task_id)?.predecessorTaskIds||[]})),[['İş no',r=>'#'+r.task_id],['İş','name'],['Öncül no',r=>r.predecessors.length?r.predecessors.map(n=>'#'+n).join(', '):'—'],['İstasyon','station_id'],['Operatör','operator_id'],['Başlangıç s',r=>number(r.start_sec)],['Bitiş s',r=>number(r.finish_sec)]])}`;
+ html+='<p class="note">İstasyon saatleri yereldir; farklı istasyonlarda 0 başlangıcı aynı ürünün eşzamanlı işlendiğini göstermez. Makine çubuğu tüm çevrimi gösterir; insan meşguliyeti ayrıca girdide belirtilir. Süreler benchmark girdisidir; laboratuvar bunları yeniden PMTS hesabına sokmaz.</p>';
+ if(emptyStations.length)html+=`<div class="warning">Boş kalan istasyon: ${emptyStations.map(esc).join(', ')}. Girilen istasyon sayısı, dengeleyicinin her istasyonu kullanmasını zorunlu kılmaz.</div>`;
+ if(o.reasons?.length)html+=`<div class="warning">${o.reasons.map(esc).join('<br>')}</div>`;
+ return html;
+}
 function balanceVisual(o){
  let html=`<div class="stats">${stat('Darboğaz',o.bottleneck_sec,'s')}${stat('Takt',o.takt_sec,'s')}${stat('İnsan doluluğu',o.efficiency_percent,'%',o.feasible===false)}</div>`;
- html+=`<span class="pill-small ${o.feasible?'':'red'}">${o.feasible?'Kısıtlara uygun çözüm':'Kapasite / yerleşim sorunu'}</span>`+gantt(o);
+ html+=`<span class="pill-small ${o.feasible?'':'red'}">${o.feasible?'Kısıtlara uygun çözüm':o.feasibility_status==='proven_infeasible'?'Kapasite modelde yetersiz':'Uygun çözüm bulunamadı; imkânsızlık kanıtlanmadı'}</span>`+gantt(o);
  html+=table(o.assignments||[],[['Görev','task_id'],['İstasyon','station_id'],['Operatör','operator_id'],['Başlangıç',r=>number(r.start_sec)],['Bitiş',r=>number(r.finish_sec)]]);
  html+='<p class="note">İstasyonların saatleri yereldir; farklı istasyonlardaki 0 başlangıcı aynı ürünün iki yerde aynı anda işlendiği anlamına gelmez. Hat sürekli çevrim varsayımıyla değerlendirilir. optimality_proven=false.</p>';
  if(o.reasons?.length)html+=`<div class="warning">${o.reasons.map(esc).join('<br>')}</div>`;
@@ -115,6 +156,7 @@ function visual(result){
  if(result.error)return `<div class="error-box"><strong>${esc(result.error.type)}</strong>${esc(result.error.message)}<p>${current.id==='bug-cycle'?'Bu hazır vaka, açık öncelik döngüsünü yeniden üretir. Çağrı izi ve kaynak kodundan son fonksiyonu incele.':'Bu girdi fonksiyon tarafından tamamlanamadı. Çağrı izini açarak sınırı incele; üstteki deney açıklaması varsayılan örnek içindir.'}</p></div>`;
  if(o?.operations&&'coverage_percent'in o)return resultPlan(o,result.input);
  if(o?.elements&&'standard_time_sec'in o)return resultOperation(o);
+ if(o?.benchmark_input)return lineBenchmarkVisual(o);
  if(o?.assignments)return balanceVisual(o);
  if(o?.scene && o?.analysis)return geometryVisual(o);
  if(o?.assembly&&o?.priced){
@@ -188,10 +230,23 @@ $('search').addEventListener('input',renderNav);
 $('theme-toggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Koyu tema':'Açık tema';
 $('theme-toggle').addEventListener('click',()=>{const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',next);$('theme-toggle').textContent=next==='light'?'Koyu tema':'Açık tema';try{localStorage.setItem('anvex.theme',next)}catch(e){}});
 $('run').addEventListener('click',runExperiment);
-$('input').addEventListener('input',()=>{markDirty();renderControls();});
+$('input').addEventListener('input',()=>{markDirty();renderControls();renderBenchmarkEditor();});
 $('controls').addEventListener('input',event=>{const i=event.target.dataset.control;if(i===undefined)return;try{const data=JSON.parse($('input').value),c=current.controls[Number(i)];setPath(data,c.path,Number(event.target.value));$('input').value=pretty(data);$('control-out-'+i).textContent=event.target.value+' '+c.unit;markDirty();}catch(e){setStatus('Önce JSON biçimini düzelt.',true);}});
-$('variant').addEventListener('change',()=>{const s=state();s.variant=Number($('variant').value);$('input').value=pretty(s.variant?current.variants[s.variant-1].input:current.input);markDirty();renderControls();});
-$('reset').addEventListener('click',()=>{$('variant').value='0';state().variant=0;$('input').value=pretty(current.input);markDirty();renderControls();});
+$('benchmark-editor').addEventListener('input',event=>{
+ const field=event.target.dataset.benchmarkField,jobField=event.target.dataset.jobField;
+ if(field){updateBenchmark(data=>{if(field==='station_operator_counts'){const values=event.target.value.trim();if(values)data.station_operator_counts=values.split(/[\s,;]+/).map(Number);else delete data.station_operator_counts;return;}const path=field.split('.');setPath(data,path,field==='takt.taktMode'?event.target.value:Number(event.target.value));},field==='takt.taktMode');return;}
+ if(jobField){const index=Number(event.target.dataset.jobIndex);let value=event.target.value;
+  if(jobField==='predecessors')value=value.split(/[\s,;]+/).filter(Boolean).map(n=>/^\d+$/.test(n)?Number(n):n);
+  else if(jobField==='resources')value=value.split(',').map(s=>s.trim()).filter(Boolean);
+  else if(jobField==='operator_phases'){const parts=value.trim()?value.split(',').map(s=>s.trim()):[];value=parts.map(part=>{const match=part.match(/^([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)$/);if(!match)return null;return [Number(match[1]),Number(match[2])];});}
+  else if(['number','seconds','human_seconds'].includes(jobField))value=Number(value);
+  if(jobField==='operator_phases'&&value.some(phase=>!phase)){setStatus('Operatör aralıkları 0-1, 9-10 biçiminde olmalı.',true);return;}
+  else if(jobField==='station_locked')value=event.target.checked;
+  updateBenchmark(data=>{const job=data.jobs[index];job[jobField]=value;if(jobField==='work_type'){job.human_seconds=value==='manual'?job.seconds:0;delete job.operator_phases;}if(jobField==='operator_phases')job.human_seconds=value.reduce((sum,[a,b])=>sum+b-a,0);},jobField==='work_type');}
+});
+$('benchmark-editor').addEventListener('click',event=>{const button=event.target.closest('[data-benchmark-action]');if(!button)return;const action=button.dataset.benchmarkAction;updateBenchmark(data=>{if(action==='add'){const numbers=data.jobs.map(j=>Number(j.number)).filter(Number.isFinite);const last=data.jobs.at(-1);data.jobs.push({number:Math.max(0,...numbers)+1,name:'Yeni iş',seconds:5,predecessors:last?[last.number]:[]});}if(action==='remove'){const index=Number(button.dataset.jobIndex),number=data.jobs[index].number;data.jobs.splice(index,1);for(const job of data.jobs)job.predecessors=(job.predecessors||[]).filter(p=>p!==number);}},true);});
+$('variant').addEventListener('change',()=>{const s=state();s.variant=Number($('variant').value);$('input').value=pretty(s.variant?current.variants[s.variant-1].input:current.input);markDirty();renderControls();renderBenchmarkEditor();});
+$('reset').addEventListener('click',()=>{$('variant').value='0';state().variant=0;$('input').value=pretty(current.input);markDirty();renderControls();renderBenchmarkEditor();});
 $('prev').addEventListener('click',()=>select(lessons[Math.max(0,lessons.indexOf(current)-1)].id,true));
 $('next').addEventListener('click',()=>select(current.next||lessons[Math.min(lessons.length-1,lessons.indexOf(current)+1)].id,true));
 $('whole').addEventListener('click',()=>select('pipeline',true));
@@ -211,7 +266,7 @@ select(location.hash.slice(1)||'plan');
 runExperiment();
 
 function renderExecutionMap(result){
- const names=new Set(['open_document','read_assembly','collect_assembly_mates','compute','check_sequence_feasibility','plan_sequence','_flatten_steps','_apply_canonical_mtm_times','calculate_plan','calculate_operation','validate_operation','classify','derive_context','expand_step','_motion_tmu','apply_element_edits','simultaneous_motion_time','estimate_robot','line_inputs','balance_line','balance','_first_slot','benchmark']);
+ const names=new Set(['open_document','read_assembly','collect_assembly_mates','compute','check_sequence_feasibility','plan_sequence','_flatten_steps','_apply_canonical_mtm_times','calculate_plan','calculate_operation','validate_operation','classify','derive_context','expand_step','_motion_tmu','apply_element_edits','simultaneous_motion_time','estimate_robot','line_inputs','balance_line','balance','_first_slot','apply_balance_result','annotate_line_schedule','benchmark']);
  const calls=result?.calls.filter(c=>names.has(c.name))||[];
  const unique=[];const seen=new Set();for(const c of calls){if(!seen.has(c.source)){unique.push(c);seen.add(c.source);}}
  $('execution-map').innerHTML='<div class="section-label"><span>BU GİRDİDE FONKSİYONDAN FONKSİYONA</span><span>İlk görülme sırası · tıkla, çağrıyı aç</span></div>'+(result?`<div class="execution-nodes">${unique.map((c,i)=>`<button data-call="${c.id}"><span>${String(i+1).padStart(2,'0')} · ${calls.filter(x=>x.source===c.source).length} çağrı</span><b>${esc(c.name)}</b><small>${esc(Object.keys(c.input).filter(k=>k!=='config').join(', ')||'nesne bağlamı')} → ${esc(Array.isArray(c.output)?'liste':c.output===null?'mutasyon / null':typeof c.output==='object'?'nesne':typeof c.output)}</small></button>`).join('<span class="execution-arrow">→</span>')}</div><p class="note">Oklar ilk çağrıların görülme sırasını gösterir; fonksiyonların tamamı birbirinin doğrudan çağıranı değildir. Tam üst/alt çağrı ilişkisi “Çağrı izi” sekmesindedir.</p>`:'<p class="note">Deneyi çalıştırınca bu girdide gerçekten çalışan fonksiyonlar ve veri türleri burada belirecek.</p>');

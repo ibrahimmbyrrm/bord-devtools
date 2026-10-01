@@ -134,6 +134,97 @@ def to_line(steps):
         for i,s in enumerate(steps)])]), dict(id='s2', operators=[dict(id='o2', tasks=[])])])
 
 
+def line_benchmark(data):
+    """Build an isolated line, then use the production balance path."""
+    jobs = data['jobs']
+    station_count = data['station_count']
+    operator_count = data['operator_count']
+    if not isinstance(jobs, list) or not jobs or len(jobs) > 150:
+        raise ValueError('1–150 iş girin')
+    if (isinstance(station_count, bool) or not isinstance(station_count, int) or
+            not 1 <= station_count <= 30):
+        raise ValueError('İstasyon sayısı 1–30 arasında tam sayı olmalı')
+    if (isinstance(operator_count, bool) or not isinstance(operator_count, int) or
+            not station_count <= operator_count <= 100):
+        raise ValueError('Operatör sayısı istasyon sayısından az olamaz; en fazla 100 olabilir')
+    counts = data.get('station_operator_counts')
+    if counts is None:
+        counts = [operator_count // station_count + (i < operator_count % station_count)
+                  for i in range(station_count)]
+    elif (not isinstance(counts, list) or len(counts) != station_count or
+          any(isinstance(n, bool) or not isinstance(n, int) or n < 1 for n in counts) or
+          sum(counts) != operator_count):
+        raise ValueError('İstasyon operatör sayıları pozitif tam sayı olmalı ve toplam operatörle eşleşmeli')
+    stations = []
+    operator_number = 1
+    for index, count in enumerate(counts, 1):
+        operators = []
+        for _ in range(count):
+            operators.append(dict(id=f'O{operator_number}', tasks=[]))
+            operator_number += 1
+        stations.append(dict(id=f'S{index}', operators=operators))
+    seen = set()
+    for position, job in enumerate(jobs):
+        if not isinstance(job, dict):
+            raise ValueError(f'{position + 1}. iş nesne olmalı')
+        number = job.get('number')
+        if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+            raise ValueError(f'{position + 1}. iş numarası pozitif tam sayı olmalı')
+        task_id = str(number)
+        if task_id in seen:
+            raise ValueError(f'Tekrarlanan iş numarası: {task_id}')
+        seen.add(task_id)
+        predecessors = job.get('predecessors', [])
+        if not isinstance(predecessors, list) or any(
+                isinstance(n, bool) or not isinstance(n, int) or n <= 0 for n in predecessors):
+            raise ValueError(f'{task_id}: öncül iş numaraları pozitif tam sayı olmalı')
+        seconds = job.get('seconds')
+        work_type = job.get('work_type', 'manual')
+        if work_type not in ('manual', 'robot', 'machine'):
+            raise ValueError(f'{task_id}: iş türü manual, robot veya machine olmalı')
+        human = job.get('human_seconds', seconds if work_type == 'manual' else 0)
+        phases = job.get('operator_phases')
+        if phases is not None and 'human_seconds' not in job:
+            if not isinstance(phases, list) or any(not isinstance(p, (list, tuple)) or len(p) != 2 for p in phases):
+                raise ValueError(f'{task_id}: operator_phases [başlangıç, bitiş] listesi olmalı')
+            try:
+                human = sum(end - begin for begin, end in phases)
+            except TypeError as exc:
+                raise ValueError(f'{task_id}: operator_phases sayısal aralıklar olmalı') from exc
+        resources = job.get('resources', [])
+        if not isinstance(resources, list) or any(not isinstance(r, str) or not r.strip() for r in resources):
+            raise ValueError(f'{task_id}: kaynaklar boş olmayan kimliklerden oluşan liste olmalı')
+        station_id = job.get('station_id') or 'S1'
+        station = next((s for s in stations if s['id'] == station_id), None)
+        if station is None:
+            raise ValueError(f'{task_id}: bilinmeyen istasyon {station_id}')
+        operator_id = job.get('operator_id') or station['operators'][0]['id']
+        operator = next((o for o in station['operators'] if o['id'] == operator_id), None)
+        if operator is None:
+            raise ValueError(f'{task_id}: {station_id} içinde operatör {operator_id} yok')
+        if not isinstance(job.get('station_locked', False), bool):
+            raise ValueError(f'{task_id}: station_locked boolean olmalı')
+        # The production engine validates duration, human share and graph.
+        task = dict(id=task_id, name=str(job.get('name') or f'İş {task_id}'),
+                    canonical_total_sec=seconds, canonical_human_sec=human,
+                    canonical_machine_sec=seconds if work_type != 'manual' else 0,
+                    operatorPhases=phases,
+                    requiredResources=resources, machineResourceId=job.get('machine_resource_id'),
+                    station_locked=job.get('station_locked', False),
+                    predecessorTaskIds=[str(n) for n in predecessors])
+        operator['tasks'].append(task)
+    line = dict(id='benchmark-line', stations=stations)
+    settings = deepcopy(data['takt'])
+    result = method_balance.balance_line(line, settings)
+    if result['feasible']:
+        result['balanced_line'] = method_balance.apply_balance_result(line, result)
+    result['benchmark_input'] = dict(line=line, settings=settings, operator_counts=counts)
+    durations = [task['canonical_total_sec'] for station in stations for operator in station['operators']
+                 for task in operator['tasks']]
+    result['simple_lower_bound_sec'] = max(max(durations), sum(durations) / operator_count)
+    return result
+
+
 def pipeline(data):
     """One actual fixture through the real functions; retain every boundary output."""
     doc = open_document(FIXTURE)

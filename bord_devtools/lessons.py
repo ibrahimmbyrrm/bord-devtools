@@ -22,6 +22,15 @@ TASKS=[dict(id=k,seconds=t,predecessors=pr) for k,t,pr in [('a',6,[]),('b',6,['a
 STATIONS=[{'id':'s1','operators':['o1']},{'id':'s2','operators':['o2','o3']}]
 LINE={'id':'line','stations':[{'id':'s1','operators':[{'id':'o1','tasks':[dict(id=t['id'],name=t['id'],canonical_total_sec=t['seconds'],predecessorTaskIds=t['predecessors']) for t in TASKS]}]},{'id':'s2','operators':[{'id':'o2','tasks':[]},{'id':'o3','tasks':[]}]}]}
 SETTINGS={'taktMode':'manual','manualTakt':10}
+LINE_BENCHMARK={'station_count':2,'operator_count':3,
+    'takt':{'taktMode':'manual','manualTakt':15,'shiftMinutes':480,'plannedBreakMinutes':30,'demandUnits':1500},
+    'jobs':[
+        {'number':1,'name':'Gövdeyi al','seconds':4,'predecessors':[]},
+        {'number':2,'name':'Gövdeyi yerleştir','seconds':6,'predecessors':[1]},
+        {'number':3,'name':'Contayı hazırla','seconds':3,'predecessors':[]},
+        {'number':4,'name':'Contayı tak','seconds':5,'predecessors':[2,3]},
+        {'number':5,'name':'Vidaları sık','seconds':7,'predecessors':[4]},
+        {'number':6,'name':'Kontrol et','seconds':4,'predecessors':[5]}]}
 LESSONS=[]
 
 def add(id,group,title,fn,purpose,input,observe,try_it,run,functions,*,variants=None,controls=None,warning='',next=None):
@@ -167,7 +176,16 @@ add('balance','Plan → hat','Öncelik ve kaynaklarla dengele','balance',
     {'tasks':TASKS,'stations':STATIONS,'takt':10},
     'İstasyonlar 6 ve 10 s; darboğaz 10 s; toplam insan işi 16 s. Üç operatörde doluluk 16/(3×10)=%53.33. Ek operatör bağımlılıkları yok etmez.',
     'b → c bağını kaldırıp çizelgeyi karşılaştır. Taktı 5 s yapınca overloads ve feasible=false gör. Bu sezgisel algoritma optimum bulma garantisi vermez.',
-    lambda d:r.balance(d['tasks'],d['stations'],d['takt']),[r.balance],controls=[c('Takt',['takt'],1,30,1,'s')],next='schedule')
+    lambda d:r.balance(d['tasks'],d['stations'],d['takt']),[r.balance],controls=[c('Takt',['takt'],1,30,1,'s')],next='line-benchmark')
+add('line-benchmark','Plan → hat','Hat dengeleme benchmarkı','balance_line → balance',
+    'İş numarası, süre, öncül işler, robot/makine kaynakları ve operatör kadrosuyla gerçek hat dengeleme yolunu çalıştırır. Manuel işlerde açık öncül listesi kullanılır; boş liste bağımsız işi belirtir.',
+    LINE_BENCHMARK,
+    'İş numaralarının hangi operatöre, hangi saniyede atandığını; istasyon çevrimlerini ve takt çizgisini karşılaştır. İstasyon kadrosunu ve makine kimliğini de açıkça girebilirsin.',
+    'Bir işi gözetimsiz robot yapıp insan meşguliyetini 0 ve tam çevrim arasında değiştir. Aynı sonucu A olarak saklayıp farklı kaynak ve taleple B sonucunu karşılaştır. Başarısız sezgisel sonuç kanıtlı imkânsızlık değildir.',
+    r.line_benchmark,[r.method_balance.balance_line,r.method_balance.line_inputs,r.demand_takt,r.balance,r.method_balance.apply_balance_result,r.method_balance.annotate_line_schedule],
+    variants=[v('Sıkı takt',dict(LINE_BENCHMARK,takt=dict(LINE_BENCHMARK['takt'],manualTakt=9))),
+              v('Talebe göre takt',dict(LINE_BENCHMARK,takt=dict(LINE_BENCHMARK['takt'],taktMode='auto')))],
+    warning='Girilen iş süreleri benchmark girdisidir; PMTS hesabı veya saha ölçümü olarak doğrulanmaz.',next='schedule')
 add('schedule','Plan → hat','Yerleşimin gerçek çevrimi','annotate_line_schedule',
     'Mevcut operatör sırası sabitlenerek takvim yeniden hesaplanır. Ekranda max(operatör yükleri) almak, operatörler arasındaki bağımlı beklemeyi gizleyebilir.',
     {'line':{'id':'fixed','stations':[{'id':'s1','operators':[{'id':'o1','tasks':[{'id':'a','canonical_total_sec':6,'predecessorTaskIds':[]}]},{'id':'o2','tasks':[{'id':'b','canonical_total_sec':4,'predecessorTaskIds':['a']}]}]}]}},

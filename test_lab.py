@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0,str(Path(__file__).parent))
 from bord_devtools import runtime as r
-from bord_devtools.lessons import LESSONS, OPS, ZERO
+from bord_devtools.lessons import LESSONS, OPS, ZERO, LINE_BENCHMARK
 from bord_devtools.server import Handler, HTTPServer
 from bord_devtools.asgi import app as dev_app
 from fastapi.testclient import TestClient
@@ -80,6 +80,71 @@ def test_fixed_schedule_and_resource_gap():
     result=execute('balance')
     assert result['station_times']=={'s1':6,'s2':10}
     assert result['efficiency_percent']==pytest.approx(100*16/30)
+
+
+def test_line_benchmark_uses_the_same_production_balance_path():
+    data=deepcopy(LINE_BENCHMARK)
+    result=r.line_benchmark(data)
+    line=result['benchmark_input']['line']
+    expected=r.method_balance.balance_line(line,data['takt'])
+    assert result['assignments']==expected['assignments']
+    assert result['station_times']==expected['station_times']
+    assert result['input_token']==expected['input_token']
+    assert result['feasible'] and result['balanced_line']['schedule_status']=='calculated'
+    assert result['benchmark_input']['operator_counts']==[2,1]
+    assert [a['task_id'] for a in result['assignments']]==['1','3','2','4','5','6']
+    assert line['stations'][0]['operators'][0]['tasks'][0]['predecessorTaskIds']==[]
+    assert data==LINE_BENCHMARK
+
+
+def test_line_benchmark_takt_and_precedence_failures_are_visible():
+    data=deepcopy(LINE_BENCHMARK)
+    data['takt'].update(taktMode='auto',demandUnits=2700)
+    result=r.line_benchmark(data)
+    assert result['takt_sec']==10
+    assert not result['feasible'] and result['overloads']
+    data['jobs'][1]['predecessors']=[99]
+    with pytest.raises(ValueError,match='Unknown predecessors'):
+        r.line_benchmark(data)
+
+
+def test_line_benchmark_exposes_machine_operator_and_staffing_inputs():
+    data=dict(station_count=1,operator_count=1,
+              jobs=[dict(number=1,name='Robot',seconds=10,work_type='robot',
+                         human_seconds=0,machine_resource_id='arm-1',predecessors=[]),
+                    dict(number=2,name='Manual',seconds=5,predecessors=[])],
+              takt=dict(taktMode='manual',manualTakt=10))
+    result=r.line_benchmark(data)
+    assert result['feasible'] and result['station_times']=={'S1':10}
+    assert {a['start_sec'] for a in result['assignments']}=={0}
+    assert result['balanced_line']['schedule_status']=='calculated'
+    data['jobs'].append(dict(number=3,name='Second robot',seconds=10,work_type='robot',
+                             machine_resource_id='arm-1',predecessors=[]))
+    assert not r.line_benchmark(data)['feasible']
+    data['jobs'][2]['machine_resource_id']='arm-2'
+    assert r.line_benchmark(data)['feasible']
+    data.update(station_count=2,operator_count=3,station_operator_counts=[1,2])
+    assert r.line_benchmark(data)['benchmark_input']['operator_counts']==[1,2]
+    data['station_operator_counts']=[2,2]
+    with pytest.raises(ValueError,match='toplam'):
+        r.line_benchmark(data)
+
+
+def test_line_benchmark_respects_robot_start_and_finish_operator_phases():
+    data=dict(station_count=1,operator_count=1,
+              jobs=[dict(number=1,name='Robot',seconds=10,work_type='robot',
+                         machine_resource_id='arm-1',operator_phases=[[0,1],[9,10]],predecessors=[]),
+                    dict(number=2,name='Manual',seconds=5,predecessors=[])],
+              takt=dict(taktMode='manual',manualTakt=10))
+    result=r.line_benchmark(data)
+    assert result['feasible']
+    assert result['station_times']=={'S1':10}
+    assert result['benchmark_input']['line']['stations'][0]['operators'][0]['tasks'][0]['canonical_human_sec']==2
+    assert {a['task_id']:(a['start_sec'],a['finish_sec']) for a in result['assignments']}=={
+        '1':(0,10),'2':(1,6)}
+    data['jobs'][0]['human_seconds']=3
+    with pytest.raises(ValueError,match='sum must equal human_seconds'):
+        r.line_benchmark(data)
 
 
 def test_regressions_and_limits_are_visible():

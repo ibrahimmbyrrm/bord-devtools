@@ -22,7 +22,7 @@ sunucusunda etkinleştirmeyin.
 
 ## Kapsam ve güncellik
 
-38 küçük deney ve uçtan uca CAD örneği güncel çalışma kopyasındaki fonksiyonları
+39 küçük deney ve uçtan uca CAD örneği güncel çalışma kopyasındaki fonksiyonları
 çalıştırır. `runtime.py` hesap algoritmalarını kopyalamaz; webapp'in kanonik
 `_apply_canonical_mtm_times` fonksiyonuna da doğrudan bağlanır. Kaynak SHA'ları
 her sayfa yüklemesinde hesaplanır. Önerilen `--reload` komutu Python kodu
@@ -35,6 +35,28 @@ Sabit CAD örneği `anvex-webapp/sample_project` içinden okunur. Deneyler proje
 kaydı oluşturmaz. Laboratuvarın kullandığı ayar, ölçüm ve kütle kanıtı doğrudan
 girdiden gelir. Sentetik değerler saha doğrulaması değildir. Bu ekran tüm
 uygulama işlevleri ve bütün regresyonlar için sertifika sayılmaz.
+
+### Hat dengeleme benchmarkı
+
+`/dev/#line-benchmark` ekranında iş numarası, iş adı, süre ve öncül iş
+numaraları girilir. İstasyon ve toplam operatör sayısı ile elle takt veya
+vardiya/mola/talep hesabı seçilir. İsteğe bağlı olarak istasyon başına operatör
+sayıları, iş türü, insan meşguliyeti, makine/ortak kaynak kimliği ve sabit
+yerleşim de girilebilir. Robot işindeki operatör aralıkları `0-1, 9-10`
+biçiminde ayrıca tanımlanabilir; aralıkların toplamı insan meşguliyetine eşit
+olmalıdır. Laboratuvar sentetik iş sürelerini bir hat
+taslağına aktarır ve üretim ekranının kullandığı `method_balance.balance_line`
+ile `apply_balance_result` fonksiyonlarını çalıştırır. Grafik gerçek atama
+başlangıç/bitişlerini, iş numaralarını, operatörleri ve takt çizgisini gösterir.
+Gözetimsiz makine ile insan işi aynı operatör altında eşzamanlıysa çubuklar yan
+yana çizilir; makine çubuğu operatör meşguliyeti anlamına gelmez. Hedefe uygun
+çözüm bulunamazsa `unknown` ile küçük vaka aramasında kanıtlanmış
+`proven_infeasible` durumu ayrı gösterilir. Etkileşimli kesin arama en çok
+12 iş, 6 istasyon, 12 operatör ve 2.000 arama düğümüyle sınırlıdır; sınır
+aşılırsa sonuç kanıtsız kalır.
+İstasyonlar arası zaman eksenleri yereldir. Basit alt sınır karşılaştırması
+optimum çözüm kanıtı değildir. İş süreleri burada girilir; PMTS yeniden
+hesaplanmaz ve proje veritabanına yazılmaz.
 
 ## Test
 
