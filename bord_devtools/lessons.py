@@ -212,7 +212,7 @@ add('flow-canvas','Plan → hat','Flow Canvas: paralel hat örneği','flow_canva
     'S1’den S2A/S2B’ye ayrılan akışı, iki paralel istasyonun S3’te birleşmesini ve her görevin öncül oklarını gör. Kartlarda gerçek başlangıç/bitiş ve takt sonucu görünür.',
     'JSON içindeki `connections` alanında bir kolu silip tekrar çalıştır. Sonra S2B görevini S2A’ya taşıyarak operatör ve takt etkisini karşılaştır.',
     r.flow_canvas,[r.flow_canvas,r.method_balance.balance_line,r.method_balance.line_inputs,r.balance],
-    warning='Bu ilk canvas deneyi kaydetme/drag-drop içermez; görsel akışı ve dengeleme sözleşmesini doğrular. Üretim hattı ve veritabanı değişmez.',next='schedule')
+    warning='DEV canvasında istasyon kartlarını sürükleyebilir, portlarla akış kurabilir, metot ağacındaki işleri operatörlere bırakabilir ve seçili istasyonları paralel grup yapabilirsin. Değişiklikler yalnız JSON deney girdisine yazılır; üretim hattı ve veritabanı değişmez.',next='schedule')
 add('schedule','Plan → hat','Yerleşimin gerçek çevrimi','annotate_line_schedule',
     'Mevcut operatör sırası sabitlenerek takvim yeniden hesaplanır. Ekranda max(operatör yükleri) almak, operatörler arasındaki bağımlı beklemeyi gizleyebilir.',
     {'line':{'id':'fixed','stations':[{'id':'s1','operators':[{'id':'o1','tasks':[{'id':'a','canonical_total_sec':6,'predecessorTaskIds':[]}]},{'id':'o2','tasks':[{'id':'b','canonical_total_sec':4,'predecessorTaskIds':['a']}]}]}]}},

@@ -60,14 +60,16 @@ hesaplanmaz ve proje veritabanına yazılmaz.
 
 ### Flow Canvas örneği
 
-`/dev/#flow-canvas` mevcut hat sözleşmesini görsel bir akışa çevirir. İstasyon
-kartları, operatör görevleri, öncelik bağlantıları ve paralel istasyon grubu
-aynı SVG canvas üzerinde gösterilir. Hazır örnek `S1 → (S2A || S2B) → S3`
-akışını çalıştırır. JSON içindeki `connections`, `parallel_groups` ve görev
-öncülleri değiştirilerek yeni topolojiler denenebilir. Canvas sonucu yine
-`method_balance.balance_line` ve `balance` fonksiyonlarına gider; görsel
-yerleşim ile üretim hesabı birbirinden kopmaz. Bu ilk örnekte sürükle-bırak ve
-kayıt yoktur; amaç akış sözleşmesini ve paralellik davranışını doğrulamaktır.
+`/dev/#flow-canvas` mevcut hat sözleşmesini Miro benzeri bir DEV editörüne
+çevirir. `+ İstasyon` ile kart eklenir, kart başlığından sürüklenir; çıkış ve
+giriş portlarına sırayla tıklayarak istasyonlar bağlanır. Soldaki metot ağacı
+görevleri operatör alanlarına sürükleyip bırakır. İstasyonları seçip `Paralel
+grup oluştur` ile dallanma görsel olarak işaretlenir. Hazır örnek
+`S1 → (S2A || S2B) → S3` akışını çalıştırır. Değişiklikler canlı JSON girdisine
+yazılır ve `flow_canvas` doğrulamasından sonra yine üretimde kullanılan
+`method_balance.balance_line` ve `balance` fonksiyonlarına gider; üretim hattı
+ve veritabanı değiştirilmez. Sayfa içindeki JSON alanı da aynı akışın tam
+girdisi olarak kalır.
 
 ## Test
 
