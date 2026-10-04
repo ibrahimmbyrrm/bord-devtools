@@ -312,8 +312,9 @@ for lesson in LESSONS:
 
 for lesson in LESSONS:
     if lesson['id']=='pipeline':
-        lesson['variants'].append(v('Eksik iki işe sentetik gözlem ekle',{'context':{'part_reach_cm':30,'assembly_move_cm':20},'takt':30,'geometry':True,'operation_overrides':{'cad-op-5':{'observed_duration_sec':4},'cad-op-14':{'observed_duration_sec':4}}}))
-        lesson['try_it'] += ' Eksik iki işe sentetik gözlem ekle varyantı, yalnız eğitim için 4 saniyelik değerlerle engelin kalkmasını gösterir; gerçek CAD metodu ölçülmüş sayılmaz.'
+        # Keep the teaching evidence complete for the current 18-operation CAD fixture.
+        lesson['variants'].append(v('Tüm işlere sentetik gözlem ekle',{'context':{'part_reach_cm':30,'assembly_move_cm':20},'takt':30,'geometry':True,'operation_overrides':{f'cad-op-{i}':{'observed_duration_sec':4} for i in range(1,19)}}))
+        lesson['try_it'] += ' Tüm işlere sentetik gözlem ekle varyantı, 18 işe yalnız eğitim için 4 saniyelik değerler verir. Eksik kütle ve hareket girdileri tamamlanmış varsayılmaz; bu varyant gözlem süresi yolunu kullanır. Gerçek CAD metodu ölçülmüş sayılmaz.'
 
 for lesson in LESSONS:
     if lesson['id']=='pipeline':
